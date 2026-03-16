@@ -187,24 +187,24 @@ function displayUrl(u) {
 }
 
 async function loadTab(tab) {
+  // Always try Neon first — it is the source of truth
   try {
     const res = await fetch(`/.netlify/functions/todos?tab=${tab}`);
     if (!res.ok) throw new Error('Server error ' + res.status);
     const data = await res.json();
-    if (data.items && data.items.length > 0) {
-      let picks = data.picks || [];
-      if (data.lastDate && data.lastDate !== todayStr()) {
-        picks = picks.filter(id => !data.items.find(i => i.id === id)?.done);
-      }
-      states[tab].items = data.items.map(i => ({ url:'', starred:false, ...i }));
-      states[tab].picks = picks;
-      localStorage.setItem(SK[tab], JSON.stringify({ items: states[tab].items, picks: states[tab].picks, lastDate: todayStr() }));
-      return;
+    let picks = data.picks || [];
+    if (data.lastDate && data.lastDate !== todayStr()) {
+      picks = picks.filter(id => !data.items.find(i => i.id === id)?.done);
     }
+    states[tab].items = (data.items || []).map(i => ({ url:'', starred:false, ...i }));
+    states[tab].picks = picks;
+    // Overwrite localStorage with fresh Neon data
+    localStorage.setItem(SK[tab], JSON.stringify({ items: states[tab].items, picks: states[tab].picks, lastDate: todayStr() }));
+    return;
   } catch(e) {
-    // offline or error — fall through to localStorage
+    // Neon unreachable — fall through to localStorage
   }
-  // localStorage fallback
+  // Offline fallback — use cached data only
   try {
     const raw = localStorage.getItem(SK[tab]);
     if (raw) {
@@ -214,7 +214,7 @@ async function loadTab(tab) {
       return;
     }
   } catch {}
-  // last resort — empty (no dummy data)
+  // Truly empty — new user, no data anywhere
   states[tab].items = [];
   states[tab].picks = [];
 }
@@ -652,8 +652,7 @@ function bindEvents(picksFull) {
 
 applyTheme('personal');
 document.getElementById('tab-indicator').style.background = THEMES.personal.accent;
-load();
-render();
+load().then(() => render());
 </script>
 </body>
 </html>
