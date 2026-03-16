@@ -91,7 +91,7 @@
 <script>
 const SK = { personal:'adhd-backlog-personal-v3', work:'adhd-backlog-work-v3' };
 const THEMES = {
-  personal: { accent:'#aadd44', accentDark:'#5a8a00', accentLight:'#f6ffdd', accentMid:'#c8ee77', doneLine:'#e8f8c0', icon:'🧠', label:"Chris's Backlog", hint:'Swipe → for today · ← to delete · long-hold to edit' },
+  personal: { accent:'#aadd44', accentDark:'#5a8a00', accentLight:'#f6ffdd', accentMid:'#c8ee77', doneLine:'#e8f8c0', icon:'🧠', label:"Kalindhi's Backlog", hint:'Swipe → for today · ← to delete · long-hold to edit' },
   work:     { accent:'#9b59d0', accentDark:'#6b3fa0', accentLight:'#f3eeff', accentMid:'#c9a0f0', doneLine:'#e8d8ff', icon:'💼', label:'Work Backlog', hint:'Swipe → for today · ← to delete · long-hold to edit' }
 };
 const INIT = {
@@ -371,7 +371,6 @@ function render() {
     ${s.editingId ? editModal() : ''}
   `;
 
-  document.getElementById('new-input')?.focus();
   bindEvents(picksFull);
 }
 
@@ -530,18 +529,19 @@ function bindEvents(picksFull) {
     row.addEventListener('contextmenu', e=>{ e.stopPropagation(); showCtxMenu(e, Number(row.dataset.id), false); });
   });
 
-  // Long-hold context menu (mobile) — on item-text-wrap only to avoid conflict with flag/check
-  document.querySelectorAll('[data-expand]').forEach(el => {
-    el.addEventListener('touchstart', e => {
-      const id = Number(el.dataset.expand);
+  // Long-hold context menu (mobile) — on item-row, cancelled if touch moves
+  document.querySelectorAll('.item-wrap').forEach(wrap => {
+    const row = wrap.querySelector('.item-row');
+    const id = Number(wrap.dataset.id);
+    row.addEventListener('touchstart', e => {
+      if (e.target.closest('[data-flag]') || e.target.closest('[data-check]')) return;
       holdTimer = setTimeout(() => {
         holdTimer = null;
         showCtxMenu(null, id, true);
       }, 600);
     }, {passive:true});
-    el.addEventListener('touchend',   () => { clearTimeout(holdTimer); holdTimer = null; }, {passive:true});
-    el.addEventListener('touchmove',  () => { clearTimeout(holdTimer); holdTimer = null; }, {passive:true});
-    el.addEventListener('touchcancel',() => { clearTimeout(holdTimer); holdTimer = null; }, {passive:true});
+    row.addEventListener('touchend',    () => { clearTimeout(holdTimer); holdTimer = null; }, {passive:true});
+    row.addEventListener('touchcancel', () => { clearTimeout(holdTimer); holdTimer = null; }, {passive:true});
   });
 
   // Edit modal
@@ -622,8 +622,7 @@ function bindEvents(picksFull) {
       if (locked!=='h') return;
       moved=true;
       // cancel hold if swiping
-      clearTimeout(holdTimer); holdTimer=null;
-      offsetX=Math.max(-THRESHOLD,Math.min(THRESHOLD,dx));
+      clearTimeout(holdTimer); holdTimer=null;      offsetX=Math.max(-THRESHOLD,Math.min(THRESHOLD,dx));
       row.style.transform=`translateX(${offsetX}px)`;
       row.style.transition='none';
       const committed=Math.abs(offsetX)>=THRESHOLD;
@@ -652,7 +651,7 @@ function bindEvents(picksFull) {
 
 applyTheme('personal');
 document.getElementById('tab-indicator').style.background = THEMES.personal.accent;
-load().then(() => render());
+load().then(() => { render(); document.getElementById('new-input')?.focus(); });
 </script>
 </body>
 </html>
