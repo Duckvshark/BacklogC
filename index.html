@@ -73,6 +73,7 @@
     .item-notes-body { font-size:13px; color:#888; display:block; margin-top:6px; padding:8px 10px; background:#f7f7f7; border-radius:8px; white-space:pre-wrap; font-style:italic; line-height:1.5; }
     .item-url { font-size:11px; flex-shrink:0; max-width:72px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:none; color:var(--accent-dark); font-weight:600; border-bottom:1px solid var(--accent-mid); }
     .item-flag { font-size:15px; flex-shrink:0; cursor:pointer; line-height:1; padding:2px 0 2px 2px; opacity:0.9; }
+    .item-edit { background:none; border:none; cursor:pointer; font-size:14px; padding:0 2px; flex-shrink:0; opacity:0.4; }
   </style>
 </head>
 <body class="tab-personal">
@@ -390,7 +391,7 @@ function itemHTML(item, inPicks) {
   return `
     <div class="item-wrap" data-id="${item.id}" data-inpicks="${inPicks}">
       <div class="item-hint" data-id="${item.id}" style="display:none"></div>
-      <div class="item-row" data-id="${item.id}" draggable="true"
+      <div class="item-row" data-id="${item.id}" draggable="${inPicks ? 'true' : (!item.done ? 'true' : 'false')}"
         style="background:${rowBg};border-color:${borderColor}">
         <div class="item-check" data-check="${item.id}" style="background:${checkBg};border-color:${checkBorder}">
           ${item.done?`<span style="font-size:12px;color:#fff;font-weight:700">✓</span>`:''}
@@ -401,6 +402,7 @@ function itemHTML(item, inPicks) {
           ${hasNotes&&expanded?`<span class="item-notes-body">${esc(item.notes)}</span>`:''}
         </span>
         ${urlDisplay?`<a class="item-url" href="${esc(urlFull)}" target="_blank" rel="noopener" title="${esc(urlFull)}" onclick="event.stopPropagation()">${esc(urlDisplay)}</a>`:''}
+        <button class="item-edit" title="Edit" onclick="event.stopPropagation(); openEdit(${item.id})">✏️</button>
         <span class="item-flag" data-flag="${item.id}" title="${item.starred?'Remove star':'Star (priority)'}">${item.starred?'⭐':'☆'}</span>
       </div>
     </div>`;
@@ -529,20 +531,7 @@ function bindEvents(picksFull) {
     row.addEventListener('contextmenu', e=>{ e.stopPropagation(); showCtxMenu(e, Number(row.dataset.id), false); });
   });
 
-  // Long-hold context menu (mobile) — on item-row, cancelled if touch moves
-  document.querySelectorAll('.item-wrap').forEach(wrap => {
-    const row = wrap.querySelector('.item-row');
-    const id = Number(wrap.dataset.id);
-    row.addEventListener('touchstart', e => {
-      if (e.target.closest('[data-flag]') || e.target.closest('[data-check]')) return;
-      holdTimer = setTimeout(() => {
-        holdTimer = null;
-        showCtxMenu(null, id, true);
-      }, 600);
-    }, {passive:true});
-    row.addEventListener('touchend',    () => { clearTimeout(holdTimer); holdTimer = null; }, {passive:true});
-    row.addEventListener('touchcancel', () => { clearTimeout(holdTimer); holdTimer = null; }, {passive:true});
-  });
+
 
   // Edit modal
   document.getElementById('edit-bg')?.addEventListener('click', e=>{ if(e.target.id==='edit-bg'){S().editingId=null;render();} });
@@ -577,7 +566,11 @@ function bindEvents(picksFull) {
   document.querySelectorAll('.item-row[draggable="true"]').forEach(row => {
     row.addEventListener('dragstart', e=>{
       e.dataTransfer.setData('itemId', row.dataset.id);
-      e.dataTransfer.setData('fromPicks', row.closest('[data-inpicks]')?.dataset.inpicks||'false');
+              e.dataTransfer.setData('fromPicks', row.closest('[data-inpicks]')?.dataset.inpicks||'false');
+      // prevent drag from stealing clicks on interactive elements
+      if (e.target.closest('[data-edit]') || e.target.closest('[data-flag]') || e.target.closest('[data-check]')) {
+        e.preventDefault(); return;
+      }
     });
   });
   document.getElementById('picks-zone')?.addEventListener('dragover', e=>e.preventDefault());
