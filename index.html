@@ -91,7 +91,7 @@
 <script>
 const SK = { personal:'adhd-backlog-personal-v3', work:'adhd-backlog-work-v3' };
 const THEMES = {
-  personal: { accent:'#aadd44', accentDark:'#5a8a00', accentLight:'#f6ffdd', accentMid:'#c8ee77', doneLine:'#e8f8c0', icon:'🧠', label:'My Backlog', hint:'Swipe → for today · ← to delete · long-hold to edit' },
+  personal: { accent:'#aadd44', accentDark:'#5a8a00', accentLight:'#f6ffdd', accentMid:'#c8ee77', doneLine:'#e8f8c0', icon:'🧠', label:"Chris's Backlog", hint:'Swipe → for today · ← to delete · long-hold to edit' },
   work:     { accent:'#9b59d0', accentDark:'#6b3fa0', accentLight:'#f3eeff', accentMid:'#c9a0f0', doneLine:'#e8d8ff', icon:'💼', label:'Work Backlog', hint:'Swipe → for today · ← to delete · long-hold to edit' }
 };
 const INIT = {
@@ -130,6 +130,40 @@ let ctxMenuEl = null;
 let holdTimer = null;
 
 function todayStr() { return new Date().toISOString().slice(0,10); }
+function getStats() {
+  const now = new Date();
+  const today = todayStr();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay() + (now.getDay()===0?-6:1)); // Mon
+  const weekStr = startOfWeek.toISOString().slice(0,10);
+  const monthStr = today.slice(0,7);
+  const yearStr = today.slice(0,4);
+  const allDone = [...states.personal.items, ...states.work.items].filter(i => i.done && i.doneAt);
+  return {
+    today: allDone.filter(i => i.doneAt === today).length,
+    week:  allDone.filter(i => i.doneAt >= weekStr).length,
+    month: allDone.filter(i => i.doneAt.slice(0,7) === monthStr).length,
+    year:  allDone.filter(i => i.doneAt.slice(0,4) === yearStr).length,
+  };
+}
+
+function statsHTML() {
+  const st = getStats(); const t = T();
+  const items = [
+    { label:'Today', val:st.today },
+    { label:'This week', val:st.week },
+    { label:'This month', val:st.month },
+    { label:'This year', val:st.year },
+  ];
+  return `<div style="display:flex;gap:8px;margin-bottom:24px;">
+    ${items.map(({label,val})=>`
+      <div style="flex:1;background:#fff;border:1.5px solid #ebebeb;border-radius:12px;padding:10px 6px;text-align:center;">
+        <div style="font-size:22px;font-weight:700;color:${t.accentDark}">${val}</div>
+        <div style="font-size:10px;color:#bbb;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">${label}</div>
+      </div>`).join('')}
+  </div>`;
+}
+
 function fmtDoneHeading(s) {
   if (s==='unknown') return 'Earlier';
   const diff = Math.floor((new Date(todayStr()) - new Date(s)) / 86400000);
@@ -152,24 +186,41 @@ function displayUrl(u) {
   return u.replace(/^https?:\/\/(www\.)?/i,'').replace(/\/$/,'');
 }
 
-function load() {
-  ['personal','work'].forEach(tab => {
-    try {
-      const raw = localStorage.getItem(SK[tab]);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        let items = (saved.items || JSON.parse(JSON.stringify(INIT[tab]))).map(i => ({ url:'', starred:false, ...i }));
-        let picks = saved.picks || [];
-        if (saved.lastDate && saved.lastDate !== todayStr()) {
-          picks = picks.filter(id => !items.find(i=>i.id===id)?.done);
-        }
-        states[tab].items = items;
-        states[tab].picks = picks;
-      } else {
-        states[tab].items = JSON.parse(JSON.stringify(INIT[tab]));
+async function loadTab(tab) {
+  try {
+    const res = await fetch(`/.netlify/functions/todos?tab=${tab}`);
+    if (!res.ok) throw new Error('Server error ' + res.status);
+    const data = await res.json();
+    if (data.items && data.items.length > 0) {
+      let picks = data.picks || [];
+      if (data.lastDate && data.lastDate !== todayStr()) {
+        picks = picks.filter(id => !data.items.find(i => i.id === id)?.done);
       }
-    } catch { states[tab].items = JSON.parse(JSON.stringify(INIT[tab])); }
-  });
+      states[tab].items = data.items.map(i => ({ url:'', starred:false, ...i }));
+      states[tab].picks = picks;
+      localStorage.setItem(SK[tab], JSON.stringify({ items: states[tab].items, picks: states[tab].picks, lastDate: todayStr() }));
+      return;
+    }
+  } catch(e) {
+    // offline or error — fall through to localStorage
+  }
+  // localStorage fallback
+  try {
+    const raw = localStorage.getItem(SK[tab]);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      states[tab].items = (saved.items || []).map(i => ({ url:'', starred:false, ...i }));
+      states[tab].picks = saved.picks || [];
+      return;
+    }
+  } catch {}
+  // last resort — empty (no dummy data)
+  states[tab].items = [];
+  states[tab].picks = [];
+}
+
+async function load() {
+  await Promise.all(['personal','work'].map(tab => loadTab(tab)));
 }
 
 function save() {
@@ -287,6 +338,7 @@ function render() {
       <input id="new-input" placeholder="Capture a thought…" autocomplete="off" />
       <button class="btn-add" id="btn-add">+</button>
     </div>
+    ${statsHTML()}
     <div class="picks-zone" id="picks-zone" style="background:${picks.length?t.accentLight:'#f9f9f9'};border-color:${picks.length?t.accent:'#ddd'}">
       <div class="zone-header">
         <span class="zone-title" style="color:${picks.length?t.accentDark:'#aaa'}">
